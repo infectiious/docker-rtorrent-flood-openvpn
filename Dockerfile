@@ -18,7 +18,7 @@ ENV UID=991 GID=991 \
 
 RUN NB_CORES=${BUILD_CORES-`getconf _NPROCESSORS_CONF`} \
  && apk -U upgrade \
- echo "@community http://dl-cdn.alpinelinux.org/alpine/edge/community" >> /etc/apk/repositories \
+ && echo "@community http://dl-cdn.alpinelinux.org/alpine/edge/community" >> /etc/apk/repositories \
  && apk --no-cache add bash \
     dumb-init \
     ip6tables \
