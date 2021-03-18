@@ -98,17 +98,9 @@ RUN NB_CORES=${BUILD_CORES-`getconf _NPROCESSORS_CONF`} \
     && useradd -u 911 -U -d /config -s /bin/false abc \
     && usermod -G users abc
 
-COPY rootfs /
-
-RUN chmod +x /usr/local/bin/* /etc/s6.d/*/* /etc/s6.d/.s6-svscan/* \
- && cd /usr/flood/ && npm run build
-
-VOLUME /data /flood-db
-
 # Add configuration and scripts
+
 ADD openvpn/ /etc/openvpn/
-
-
 ADD tinyproxy /opt/tinyproxy/
 ADD scripts /etc/scripts/
 
@@ -136,7 +128,7 @@ ENV OPENVPN_USERNAME=**None** \
     LOG_TO_STDOUT=false \
     HEALTH_CHECK_HOST=google.com
 
-HEALTHCHECK --interval=1m CMD /etc/scripts/healthcheck.sh
+# HEALTHCHECK --interval=1m CMD /etc/scripts/healthcheck.sh
 
 # Add labels to identify this image and version
 ARG REVISION
@@ -144,21 +136,21 @@ ARG REVISION
 ENV REVISION=${REVISION:-""}
 LABEL org.opencontainers.image.source=https://github.com/haugene/docker-transmission-openvpn
 LABEL org.opencontainers.image.revision=$REVISION
+LABEL description="BitTorrent client with WebUI front-end" \
+      rtorrent="rTorrent BiTorrent client v$RTORRENT_VER" \
+      libtorrent="libtorrent v$LIBTORRENT_VER" \
+      maintainer="Testing"
 
 # Compatability with https://hub.docker.com/r/willfarrell/autoheal/
 LABEL autoheal=true
 
+COPY rootfs /
+
+RUN chmod +x /usr/local/bin/* /etc/s6.d/*/* /etc/s6.d/.s6-svscan/* \
+ && cd /usr/flood/ && npm run build
+
+VOLUME /data /flood-db
+
 # Expose port and run
-EXPOSE 9091
-CMD ["dumb-init", "/etc/openvpn/start.sh"]
-
-----
-
 EXPOSE 3000 49184 49184/udp
-
-LABEL description="BitTorrent client with WebUI front-end" \
-      rtorrent="rTorrent BiTorrent client v$RTORRENT_VER" \
-      libtorrent="libtorrent v$LIBTORRENT_VER" \
-      maintainer="Wonderfall <wonderfall@targaryen.house>"
-
-CMD ["run.sh"]
+CMD ["dumb-init", "/etc/openvpn/start.sh"]

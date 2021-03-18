@@ -1,5 +1,19 @@
 #!/bin/bash
 
+mkdir -p /data/torrents
+mkdir -p /data/.watch
+mkdir -p /data/.session
+
+rm -f /data/.session/rtorrent.lock
+
+chown -R $UID:$GID /data /home/torrent /tmp /usr/flood/dist /flood-db /etc/s6.d
+
+if [ ${RTORRENT_SOCK} = "false" ]; then
+    sed -i -e 's|^scgi_local.*$|scgi_port = 0.0.0.0:5000|' /home/torrent/.rtorrent.rc
+fi
+
+exec su-exec $UID:$GID /bin/s6-svscan /etc/s6.d
+
 # Source our persisted env variables from container startup
 . /etc/transmission/environment-variables.sh
 
@@ -13,76 +27,6 @@ if [[ "$4" = "" ]]; then
   exit 1
 fi
 
-# If transmission-pre-start.sh exists, run it
-if [[ -x /scripts/transmission-pre-start.sh ]]; then
-  echo "Executing /scripts/transmission-pre-start.sh"
-  /scripts/transmission-pre-start.sh "$@"
-  echo "/scripts/transmission-pre-start.sh returned $?"
-fi
-
-echo "Updating TRANSMISSION_BIND_ADDRESS_IPV4 to the ip of $1 : $4"
-export TRANSMISSION_BIND_ADDRESS_IPV4=$4
-# Also update the persisted settings in case it is already set. First remove any old value, then add new.
-sed -i '/TRANSMISSION_BIND_ADDRESS_IPV4/d' /etc/transmission/environment-variables.sh
-echo "export TRANSMISSION_BIND_ADDRESS_IPV4=$4" >>/etc/transmission/environment-variables.sh
-
-if [[ "combustion" = "$TRANSMISSION_WEB_UI" ]]; then
-  echo "Using Combustion UI, overriding TRANSMISSION_WEB_HOME"
-  export TRANSMISSION_WEB_HOME=/opt/transmission-ui/combustion-release
-fi
-
-if [[ "kettu" = "$TRANSMISSION_WEB_UI" ]]; then
-  echo "Using Kettu UI, overriding TRANSMISSION_WEB_HOME"
-  export TRANSMISSION_WEB_HOME=/opt/transmission-ui/kettu
-fi
-
-if [[ "transmission-web-control" = "$TRANSMISSION_WEB_UI" ]]; then
-  echo "Using Transmission Web Control UI, overriding TRANSMISSION_WEB_HOME"
-  export TRANSMISSION_WEB_HOME=/opt/transmission-ui/transmission-web-control
-fi
-
-if [[ "flood" = "$TRANSMISSION_WEB_UI" ]]; then
-  echo "WARNING: Using TRANSMISSION_WEB_UI=flood is deprecated. Use TRANSMISSION_WEB_UI=flood-for-transmission instead"
-  echo "WARNING: We will load flood-for-transmission for you now, but this will break with the next major release"
-  export TRANSMISSION_WEB_HOME=/opt/transmission-ui/flood-for-transmission
-fi
-
-if [[ "flood-for-transmission" = "$TRANSMISSION_WEB_UI" ]]; then
-  echo "Using Flood for Transmission UI, overriding TRANSMISSION_WEB_HOME"
-  export TRANSMISSION_WEB_HOME=/opt/transmission-ui/flood-for-transmission
-fi
-
-echo "Updating Transmission settings.json with values from env variables"
-# Ensure TRANSMISSION_HOME is created
-mkdir -p ${TRANSMISSION_HOME}
-python3 /etc/transmission/updateSettings.py /etc/transmission/default-settings.json ${TRANSMISSION_HOME}/settings.json || exit 1
-
-echo "sed'ing True to true"
-sed -i 's/True/true/g' ${TRANSMISSION_HOME}/settings.json
-
-if [[ ! -e "/dev/random" ]]; then
-  # Avoid "Fatal: no entropy gathering module detected" error
-  echo "INFO: /dev/random not found - symlink to /dev/urandom"
-  ln -s /dev/urandom /dev/random
-fi
-
-. /etc/transmission/userSetup.sh
-
-if [[ "true" = "$DROP_DEFAULT_ROUTE" ]]; then
-    echo "DROPPING DEFAULT ROUTE"
-    # Remove the original default route to avoid leaks.
-    route del default gw "${route_net_gateway}" || exit 1
-fi
-
-if [[ "true" = "$LOG_TO_STDOUT" ]]; then
-  LOGFILE=/dev/stdout
-else
-  LOGFILE=${TRANSMISSION_HOME}/transmission.log
-fi
-
-echo "STARTING TRANSMISSION"
-exec su --preserve-environment ${RUN_AS} -s /bin/bash -c "/usr/bin/transmission-daemon -g ${TRANSMISSION_HOME} --logfile $LOGFILE" &
-
 # Configure port forwarding if applicable
 if [[ -x /etc/openvpn/${OPENVPN_PROVIDER,,}/update-port.sh && -z $DISABLE_PORT_UPDATER ]]; then
   echo "Provider ${OPENVPN_PROVIDER^^} has a script for automatic port forwarding. Will run it now."
@@ -90,11 +34,4 @@ if [[ -x /etc/openvpn/${OPENVPN_PROVIDER,,}/update-port.sh && -z $DISABLE_PORT_U
   exec /etc/openvpn/${OPENVPN_PROVIDER,,}/update-port.sh &
 fi
 
-# If transmission-post-start.sh exists, run it
-if [[ -x /scripts/transmission-post-start.sh ]]; then
-  echo "Executing /scripts/transmission-post-start.sh"
-  /scripts/transmission-post-start.sh "$@"
-  echo "/scripts/transmission-post-start.sh returned $?"
-fi
-
-echo "Transmission startup script complete."
+echo "OpenVPN startup script complete."
